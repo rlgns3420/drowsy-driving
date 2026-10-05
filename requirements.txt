@@ -1,0 +1,9 @@
+# Face Mesh API and Python 3.11 wheels for Windows and Linux ARM64.
+mediapipe==0.10.18
+numpy==1.26.4
+# MediaPipe already needs contrib: install only this OpenCV distribution.
+opencv-contrib-python==4.10.0.84
+sounddevice==0.5.5
+# Keep MediaPipe's JAX dependencies compatible with NumPy 1.x.
+jax==0.4.35
+jaxlib==0.4.35

@@ -1,0 +1,19 @@
+{
+  "camera": {
+    "index": 0,
+    "width": 640,
+    "height": 480,
+    "fps": 30,
+    "inference_width": 480,
+    "backend": "auto",
+    "opencv_threads": 1,
+    "mirror": true,
+    "draw_landmarks": true
+  },
+  "calibration": {
+    "seconds": 30.0
+  },
+  "alarm": {
+    "enabled": true
+  }
+}

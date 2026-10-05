@@ -1,0 +1,11 @@
+{
+  "camera": {
+    "width": 640,
+    "height": 480,
+    "fps": 30,
+    "inference_width": 320,
+    "backend": "v4l2",
+    "opencv_threads": 1,
+    "draw_landmarks": false
+  }
+}
