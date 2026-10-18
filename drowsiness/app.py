@@ -4,14 +4,13 @@ import time
 import cv2
 
 from .alarm import Alarm
-from .calibration import Calibrator
 from .camera import Webcam
 from .config import Config
-from .detector import DrowsinessDetector
 from .display import FrameRate, render
 from .face_mesh import FaceMeshExtractor
 from .head_pose import HeadPoseEstimator
-from .metrics import MetricSmoother, is_valid, measure
+from .metrics import is_valid, measure
+from .pipeline import MonitoringPipeline
 
 
 def run(config: Config) -> None:
@@ -22,12 +21,11 @@ def run(config: Config) -> None:
         camera = Webcam(config.camera)
         mesh = FaceMeshExtractor(config.camera.inference_width)
         estimator = HeadPoseEstimator()
-        calibrator = Calibrator(config.calibration, config.detection.max_observation_gap)
-        smoother = MetricSmoother(config.detection.smoothing_seconds,
-                                  config.detection.max_observation_gap)
+        pipeline = MonitoringPipeline(config)
+        calibrator = pipeline.calibrator
         alarm = Alarm(config.alarm)
         rates = FrameRate()
-        profile = detector = None
+        profile = None
         logging.info("Calibration: look forward, eyes open, mouth relaxed for about %.0fs",
                      config.calibration.seconds)
         cv2.namedWindow(window, cv2.WINDOW_NORMAL)
@@ -47,23 +45,16 @@ def run(config: Config) -> None:
                             raw = None
                     except ValueError:
                         raw = None
-            if raw is not None:
-                metrics = smoother.update(raw, now)
-            else:
-                smoother.reset()
-            if profile is None:
-                # Outliers must be tested on RAW observations, before smoothing.
-                profile = calibrator.update(raw, now)
-                if profile is not None:
-                    detector = DrowsinessDetector(profile, config.detection)
-                    smoother.reset()
-                    logging.info("Calibration ready: EAR %.3f (<%.3f), MAR %.3f (>%.3f), "
-                                 "inliers %d, removed %d", profile.ear_baseline,
-                                 profile.ear_threshold, profile.mar_baseline,
-                                 profile.mar_threshold, profile.samples_kept,
-                                 profile.samples_rejected)
-            else:
-                detection = detector.update(metrics, now)
+            previous_profile = profile
+            observation = pipeline.update(raw, now)
+            metrics, profile, detection = (observation.metrics, observation.profile,
+                                            observation.detection)
+            if previous_profile is None and profile is not None:
+                logging.info("Calibration ready: EAR %.3f (<%.3f), MAR %.3f (>%.3f), "
+                             "inliers %d, removed %d", profile.ear_baseline,
+                             profile.ear_threshold, profile.mar_baseline,
+                             profile.mar_threshold, profile.samples_kept,
+                             profile.samples_rejected)
             alarm.update(detection is not None and detection.alarm)
             canvas = render(frame, landmarks, metrics, calibrator, profile, detection,
                             rates.fps, inference_ms, config.camera.mirror,
@@ -77,9 +68,8 @@ def run(config: Config) -> None:
                 break
             if key in (ord("c"), ord("C")):
                 alarm.update(False)
-                calibrator.reset()
-                smoother.reset()
-                profile = detector = None
+                pipeline.reset()
+                profile = None
                 logging.info("Calibration restarted")
     finally:
         if alarm is not None:

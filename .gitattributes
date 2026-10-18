@@ -1,0 +1,2 @@
+# Keep Raspberry Pi shell scripts usable after a Windows checkout.
+*.sh text eol=lf
