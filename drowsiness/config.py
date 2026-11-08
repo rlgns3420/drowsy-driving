@@ -59,7 +59,17 @@ class AlarmConfig:
 
 
 @dataclass
+class DisplayConfig:
+    simple: bool = False
+    calibration_seconds: float = 10.0
+    camera_retry_seconds: float = 4.0
+    auto_recalibrate: bool = True
+    face_absence_seconds: float = 5.0
+
+
+@dataclass
 class Config:
+    display: DisplayConfig = field(default_factory=DisplayConfig)
     camera: CameraConfig = field(default_factory=CameraConfig)
     calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
     detection: DetectionConfig = field(default_factory=DetectionConfig)
@@ -93,7 +103,7 @@ class Config:
         return config
 
     def validate(self) -> None:
-        for section_name in ("camera", "calibration", "detection", "alarm"):
+        for section_name in ("camera", "calibration", "detection", "alarm", "display"):
             section = getattr(self, section_name)
             for item in fields(section):
                 value = getattr(section, item.name)

@@ -55,3 +55,27 @@ bash pi/run.sh --source usb
 대상은 라즈베리 파이 4·5, 라즈베리 파이 운영체제 북웜(Bookworm) 64비트, 파이썬 3.11입니다.
 화면 없이 실행하며 `--preview`로 화면을 열 수 있습니다.
 장치 점검과 자세한 설치·실행 방법은 [라즈베리 파이 설치 안내](pi/README.md)를 참고하세요.
+
+## 전시 모드
+
+Windows에서 `test/run-exhibit.cmd`를 더블클릭하세요. 설치된 `.venv`를 사용하며 웹캠을 자동 시작합니다.
+직접 실행: `python test/local.py --exhibit` 또는 `python main.py --ui desktop --simple`.
+카메라 없이 확인: `python test/local.py --exhibit --demo` (시뮬레이션 표시, 경보음 없음).
+
+큰 영상과 정상 / 주의 / 졸음 위험 판정을 표시합니다. C는 기준값 재수집,
+F/F11은 전체화면, M은 경보음 전환, Esc는 종료입니다. 관람객 교대 시 C를 누르세요.
+자동 재수집은 적용하지 않았습니다. 정상 정면 자세의 유효 관측 시간 기준 기본 10초이며,
+설정 파일의 `"display": {"simple": true, "calibration_seconds": 10.0}`으로 조절합니다.
+샘플 수·품질 조건도 충족해야 합니다. 기존 상세 모드는 옵션 없이 그대로 실행합니다.
+카메라 오류 시 나타나는 시뮬레이션 버튼으로 시연을 계속할 수 있습니다.
+전시 실행 스크립트는 경보음을 기본으로 켜며, 시뮬레이션은 소리를 재생하지 않습니다.
+
+UI 검증: `python test/local.py --exhibit --ui-smoke`.
+정상·주의·위험 판정 카드 문구를 확인하고 `.cache/exhibit-ui/normal.png`,
+`danger.png`, `tracking.png`에 화면을 저장합니다 (데스크톱과 Pillow 필요).
+
+### 전시 중 복구와 관람객 교대
+
+전시 모드는 카메라 오류 후 4초마다 자동 재연결합니다. 판정 카드의 카메라 다시 연결 버튼 또는 R로 즉시 재시도합니다. 재연결 시 기준값도 다시 수집합니다.
+얼굴이 5초 이상 사라졌다 돌아오면 기준값을 자동 재수집합니다. `display.camera_retry_seconds`, `display.face_absence_seconds`로 시간을 조정하고 `display.auto_recalibrate: false`로 자동 재수집을 끕니다. 전시 모드에서만 적용됩니다.
+Esc는 2초 안에 두 번 눌러 종료합니다. `--exhibit`는 `--simple`과 같습니다. 시뮬레이션에는 실제 카메라가 아니라는 배너가 표시됩니다. 전시 전 **시스템 볼륨을 확인**하세요.

@@ -19,6 +19,7 @@ def main():
     parser.add_argument("--video", type=Path, help="Replay a local recorded video")
     parser.add_argument("--start", action="store_true", help="Start the selected camera immediately")
     parser.add_argument("--ui-smoke", action="store_true", help="Check UI states and close automatically")
+    parser.add_argument("--exhibit", action="store_true", help="Fullscreen exhibition dashboard")
     args = parser.parse_args()
     if args.demo and args.video:
         parser.error("--demo and --video cannot be combined")
@@ -31,11 +32,14 @@ def main():
             config.camera.index = args.camera
         if args.backend is not None:
             config.camera.backend = args.backend
+        if args.exhibit:
+            config.display.simple = True
+            config.alarm.enabled = True
         config.validate()
         app = MonitorApp(config, demo=args.demo, video=args.video)
         if args.ui_smoke:
-            return app.smoke_check(ROOT / ".cache" / "ui")
-        if args.start or args.demo or args.video:
+            return app.smoke_check(ROOT / ".cache" / ("exhibit-ui" if config.display.simple else "ui"))
+        if args.start or args.demo or args.video or config.display.simple:
             app.root.after(150, app.start)
         app.root.mainloop()
         return 0

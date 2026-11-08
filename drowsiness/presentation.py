@@ -9,6 +9,17 @@ REASONS = {"Eyes closed": "눈 감김 지속", "Yawning": "하품 / 입 벌림 �
            "Head off neutral": "고개 자세 이탈", "Tracking unavailable": "얼굴 추적 불가"}
 
 
+def exhibit_view(view):
+    """Visitor-facing wording, preserving the shared decision keys and colors."""
+    title, detail = {
+        "NORMAL": ("정상", "안전한 운전 자세를 유지해 주세요."),
+        "WARNING": ("주의", "졸음 징후가 보입니다. 주의해 주세요."),
+        "DANGER": ("졸음 위험", "안전한 곳에서 휴식을 취하세요."),
+        "CALIBRATING": ("준비 중", view.detail),
+    }.get(view.key, (view.title, view.detail))
+    return StatusView(view.key, title, detail, view.color, view.background)
+
+
 @dataclass(frozen=True)
 class StatusView:
     key: str
