@@ -13,15 +13,20 @@ def main() -> int:
     parser.add_argument("--ui", choices=("desktop", "opencv"),
                         default="desktop" if os.name == "nt" else "opencv",
                         help="Windows defaults to the Korean dashboard; Pi/Linux use OpenCV")
+    parser.add_argument("--simple", action="store_true", help="Fullscreen exhibition dashboard")
     args = parser.parse_args()
     os.environ.setdefault("MPLCONFIGDIR", str(Path(__file__).resolve().parent / ".cache" / "matplotlib"))
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     try:
         from drowsiness.config import Config
         config = Config.load(args.config)
+        if args.simple:
+            config.display.simple = True
         if args.ui == "desktop":
             from drowsiness.desktop import MonitorApp
             app = MonitorApp(config)
+            if config.display.simple:
+                app.root.after(150, app.start)
             app.root.mainloop()
         else:
             from drowsiness.app import run

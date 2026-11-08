@@ -14,7 +14,7 @@ from .camera import discover_cameras
 from .demo import demo_sample
 from .metrics import LEFT_EYE, MOUTH, RIGHT_EYE
 from .pipeline import MonitoringPipeline
-from .presentation import StatusView, status_view
+from .presentation import StatusView, exhibit_view, status_view
 from .worker import FramePacket, MonitorWorker
 
 
@@ -25,7 +25,12 @@ FONT = "Malgun Gothic"
 
 class MonitorApp:
     def __init__(self, config, demo=False, video=None):
-        self.config = config
+        self.config = deepcopy(config)
+        self.simple = config.display.simple
+        if self.simple:
+            self.config.calibration.seconds = config.display.calibration_seconds
+            self.config.camera.draw_landmarks = False
+        config = self.config
         try:
             self.root = tk.Tk()
         except tk.TclError as exc:
@@ -49,6 +54,12 @@ class MonitorApp:
         self._build()
         self.root.bind("<Escape>", lambda event: self.close())
         self.root.bind("<Key-c>", lambda event: self.recalibrate())
+        if self.simple:
+            self.root.bind("<Key-C>", lambda event: self.recalibrate())
+            for key in ("<F11>", "<Key-f>", "<Key-F>"):
+                self.root.bind(key, self.toggle_fullscreen)
+            for key in ("<Key-m>", "<Key-M>"):
+                self.root.bind(key, self.mute)
         self.root.after(30, self._poll)
 
     def label(self, parent, text, size=11, color=TEXT, bg=CARD, bold=False, **kwargs):
@@ -73,7 +84,8 @@ class MonitorApp:
         header = tk.Frame(self.root, bg=BG)
         header.pack(fill="x", padx=24, pady=(20, 16))
         self.label(header, "DRIVE GUARD", 22, bg=BG, bold=True).pack(side="left")
-        self.label(header, "LOCAL MONITOR  /  PC 검증", 10, MUTED, BG).pack(side="left", padx=18)
+        self.label(header, "졸음운전 방지 시스템" if self.simple else "LOCAL MONITOR  /  PC 검증",
+                   14 if self.simple else 10, MUTED, BG).pack(side="left", padx=18)
         self.source_label = self.label(header, "카메라 연결 대기", 10, ACCENT, BG)
         self.source_label.pack(side="right")
 
@@ -193,6 +205,34 @@ class MonitorApp:
                                     9, MUTED, BG, anchor="w")
         self.help_text.pack(fill="x")
 
+        if self.simple:
+            self.root.title("Drive Guard | 졸음운전 방지 시스템")
+            self.root.minsize(960, 600)
+            self.root.geometry("1280x800")
+            for widget in (toolbar, metrics_row, self.perf, evidence, history,
+                           self.reset_button, self.visual_alert, self.source_label):
+                widget.pack_forget()
+            self.status_title.configure(font=(FONT, 38, "bold"), wraplength=285, justify="left")
+            self.status_detail.configure(font=(FONT, 14), wraplength=285)
+            self.status_card.configure(pady=28)
+            self.calibration_text.configure(text="정면을 바라봐 주세요", font=(FONT, 13))
+            self.fallback_button = self.button(right, "시뮬레이션 시작", self.select_demo)
+            # This label belongs to the hidden evidence frame; create a visible copy.
+            self.audio_text = self.label(right, "경보음 활성", 9, MUTED, BG, wraplength=285)
+            self.audio_text.pack(fill="x", pady=10)
+            self.help_text.configure(text="C 기준값 재수집   ·   F / F11 전체화면   ·   M 경보음   ·   Esc 종료")
+            self.toggle_audio()
+            self.toggle_fullscreen()
+
+    def toggle_fullscreen(self, event=None):
+        self.root.attributes("-fullscreen", not self.root.attributes("-fullscreen"))
+        return "break"
+
+    def mute(self, event=None):
+        self.audio.set(not self.audio.get())
+        self.toggle_audio()
+        return "break"
+
     def _placeholder(self, event=None):
         if self.photo is None:
             self.video_canvas.delete("all")
@@ -210,6 +250,8 @@ class MonitorApp:
         self.history.configure(state="disabled")
 
     def _status(self, view):
+        if self.simple:
+            view = exhibit_view(view)
         self.current_status = view.key
         self.status_card.configure(bg=view.background)
         for label in (self.status_eyebrow, self.status_title, self.status_detail, self.visual_alert):
@@ -242,6 +284,8 @@ class MonitorApp:
         self.last_packet_at = None
         self._clear_metrics()
         self._busy(True)
+        if self.simple:
+            self.fallback_button.pack_forget()
         self.source_label.configure(text="시뮬레이션 · 실제 카메라 검증 아님" if self.mode.get() == "demo" else
                                     "영상 재생 준비" if self.mode.get() == "video" else "카메라 연결 중")
         self._status(StatusView("CONNECTING", "연결 중", "영상 입력과 얼굴 추적 모델을 준비하고 있습니다.",
@@ -309,6 +353,8 @@ class MonitorApp:
         for value in self.duration_labels:
             value.configure(text="0.0 s")
         self.calibration_text.configure(text="정상 자세 관측 후 판정 시작")
+        if self.simple:
+            self.calibration_text.configure(text="정면을 바라봐 주세요")
         self.perf.configure(text="FPS --    |    추론 -- ms    |    얼굴 추적 대기")
 
     def _show_packet(self, packet):
@@ -320,6 +366,8 @@ class MonitorApp:
         self.progress["value"] = observation.progress * 100
         self.calibration_text.configure(text="기준값 설정 완료" if observation.profile else
                                          f"정상 자세 {observation.valid_seconds:.1f}초 수집 · {observation.progress * 100:.0f}%")
+        if self.simple:
+            self.calibration_text.configure(text="기준값 설정 완료" if observation.profile else "정면을 바라봐 주세요")
         metrics, profile, detection = observation.metrics, observation.profile, observation.detection
         values = (f"{metrics.ear:.3f}", f"{metrics.mar:.3f}",
                   f"{metrics.pose.pitch:+.0f} / {metrics.pose.yaw:+.0f} / {metrics.pose.roll:+.0f}°") if metrics else ("--", "--", "--")
@@ -402,7 +450,10 @@ class MonitorApp:
                     self._placeholder()
                     self.video_badge.configure(text="OFFLINE", fg=MUTED)
                     if kind == "failed":
-                        self._status(StatusView("ERROR", "연결 / 처리 오류", "카메라 연결과 권한을 확인하세요.\n오류 내용은 상태 기록을 확인하세요.",
+                        if self.simple:
+                            self.fallback_button.pack(fill="x", pady=12)
+                        self._status(StatusView("ERROR", "연결 / 처리 오류", "카메라 연결과 권한을 확인하세요.\n" +
+                                                ("시뮬레이션 버튼으로 시연할 수 있습니다." if self.simple else "오류 내용은 상태 기록을 확인하세요."),
                                                 "#fb7185", "#3b1b29"))
                     else:
                         self._status(StatusView("STOPPED", "감지 종료", message, MUTED, CARD))
@@ -441,7 +492,8 @@ class MonitorApp:
             self._show_packet(FramePacket(frame, None, observation, 30, 0,
                               "시뮬레이션 · 실제 카메라 검증 아님", False, None))
             self.root.update()
-            assert self.status_title.cget("text") == status_view(observation).title
+            expected = exhibit_view(status_view(observation)) if self.simple else status_view(observation)
+            assert self.status_title.cget("text") == expected.title
             if key in ("NORMAL", "DANGER", "TRACKING"):
                 # Pillow is optional, used only for this verification artifact.
                 from PIL import ImageGrab
@@ -482,7 +534,11 @@ class MonitorApp:
         assert self.start_button.cget("state") == "normal"
         self.root.geometry("1040x800+24+24")
         self.root.update()
-        assert self.history.winfo_height() >= 20
+        if self.simple:
+            assert not self.history.winfo_ismapped()
+            assert self.fallback_button.winfo_ismapped()
+        else:
+            assert self.history.winfo_height() >= 20
         self.root.destroy()
         print("UI smoke passed: calibration, normal, warning, danger, tracking loss, audio off, "
               "worker start/stop, recalibration, camera-error recovery")
