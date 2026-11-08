@@ -38,11 +38,23 @@ class MonitorWorker(threading.Thread):
         self.events = queue.Queue()
         self.commands = queue.Queue()
         self.stopped = threading.Event()
+        self.reconnect_requested = threading.Event()
 
     def stop(self):
         self.stopped.set()
+        self.reconnect_requested.set()
+
+    def reconnect(self):
+        self.reconnect_requested.set()
 
     def run(self):
+        while True:
+            self.reconnect_requested.clear()
+            if not self._run_once() or self.stopped.is_set():
+                break
+            self.reconnect_requested.wait(self.config.display.camera_retry_seconds)
+
+    def _run_once(self):
         camera = processor = alarm = None
         outcome = "감지를 종료했습니다."
         failed = False
@@ -65,6 +77,8 @@ class MonitorWorker(threading.Thread):
             rates, last_status = FrameRate(), None
             started = time.monotonic()
             while not self.stopped.is_set():
+                if self.mode == "camera" and self.reconnect_requested.is_set():
+                    raise RuntimeError("카메라 수동 재연결 요청")
                 while True:
                     try:
                         command, value = self.commands.get_nowait()
@@ -118,4 +132,11 @@ class MonitorWorker(threading.Thread):
                         resource.close()
                     except Exception as exc:
                         self.events.put(("error", f"자원 종료 오류: {exc}"))
-            self.events.put(("failed" if failed else "finished", outcome))
+            retry = failed and self.mode == "camera" and self.config.display.simple
+            if retry:
+                try:
+                    self.frames.get_nowait()
+                except queue.Empty:
+                    pass
+            self.events.put(("retrying" if retry else "failed" if failed else "finished", outcome))
+        return retry

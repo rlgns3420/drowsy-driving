@@ -45,6 +45,7 @@ class MonitorApp:
         self.closing = False
         self.last_packet_at = None
         self.photo = None
+        self.escape_at = None
         self.scan_results = queue.Queue()
         self.video_path = Path(video) if video else None
         self.mode = tk.StringVar(value="demo" if demo else "video" if video else "camera")
@@ -52,9 +53,11 @@ class MonitorApp:
         self.backend = tk.StringVar(value=config.camera.backend)
         self.audio = tk.BooleanVar(value=config.alarm.enabled)
         self._build()
-        self.root.bind("<Escape>", lambda event: self.close())
+        self.root.bind("<Escape>", self.escape)
         self.root.bind("<Key-c>", lambda event: self.recalibrate())
         if self.simple:
+            for key in ("<Key-r>", "<Key-R>"):
+                self.root.bind(key, self.reconnect_camera)
             self.root.bind("<Key-C>", lambda event: self.recalibrate())
             for key in ("<F11>", "<Key-f>", "<Key-F>"):
                 self.root.bind(key, self.toggle_fullscreen)
@@ -216,13 +219,32 @@ class MonitorApp:
             self.status_detail.configure(font=(FONT, 14), wraplength=285)
             self.status_card.configure(pady=28)
             self.calibration_text.configure(text="정면을 바라봐 주세요", font=(FONT, 13))
+            self.reconnect_button = self.button(self.status_card, "카메라 다시 연결 · R", self.reconnect_camera)
+            self.reconnect_button.pack(fill="x", pady=(12, 0))
             self.fallback_button = self.button(right, "시뮬레이션 시작", self.select_demo)
             # This label belongs to the hidden evidence frame; create a visible copy.
             self.audio_text = self.label(right, "경보음 활성", 9, MUTED, BG, wraplength=285)
             self.audio_text.pack(fill="x", pady=10)
-            self.help_text.configure(text="C 기준값 재수집   ·   F / F11 전체화면   ·   M 경보음   ·   Esc 종료")
+            self.help_text.configure(text="C 기준값 재수집   ·   F / F11 전체화면   ·   M 경보음   ·   R 카메라 재연결   ·   Esc 두 번 종료")
             self.toggle_audio()
             self.toggle_fullscreen()
+
+    def escape(self, event=None):
+        now = time.monotonic()
+        if self.simple and (self.escape_at is None or now - self.escape_at > 2):
+            self.escape_at = now
+            self.help_text.configure(text="종료하려면 2초 안에 Esc를 한 번 더 누르세요.")
+            return "break"
+        self.close()
+        return "break"
+
+    def reconnect_camera(self, event=None):
+        if self.worker is not None:
+            if self.worker.mode == "camera":
+                self.worker.reconnect()
+        else:
+            self.start_camera()
+        return "break"
 
     def toggle_fullscreen(self, event=None):
         self.root.attributes("-fullscreen", not self.root.attributes("-fullscreen"))
@@ -400,6 +422,11 @@ class MonitorApp:
             self.photo = tk.PhotoImage(data=base64.b64encode(png))
             self.video_canvas.delete("all")
             self.video_canvas.create_image(available_w // 2, available_h // 2, image=self.photo)
+            if packet.source.startswith("시뮬레이션"):
+                self.video_canvas.create_rectangle(0, available_h - 70, available_w, available_h,
+                                                   fill="#78350f", outline="")
+                self.video_canvas.create_text(available_w // 2, available_h - 35,
+                    text="시뮬레이션 (실제 카메라 아님)", fill="#ffffff", font=(FONT, 22, "bold"))
             if self.current_status == "DANGER":
                 self.video_canvas.create_rectangle(2, 2, available_w - 2, available_h - 2,
                                                     outline="#fb7185", width=5)
@@ -441,6 +468,14 @@ class MonitorApp:
                 except queue.Empty:
                     break
                 self.log(message)
+                if kind == "retrying":
+                    self.last_packet_at = None
+                    self._clear_metrics()
+                    self.photo = None
+                    self._placeholder()
+                    self.video_badge.configure(text="RECONNECTING", fg="#fbbf24")
+                    self._status(StatusView("RECONNECTING", "카메라 다시 연결 중…",
+                        "USB 연결과 권한을 확인하세요. 자동으로 재시도합니다.", "#fbbf24", "#362b17"))
                 if kind in ("finished", "failed"):
                     self.worker = None
                     self.last_packet_at = None
@@ -530,13 +565,19 @@ class MonitorApp:
         with patch("drowsiness.worker.Webcam", side_effect=RuntimeError("UI test: camera missing")):
             self.start_camera()
             pump(0.25)
-        assert self.current_status == "ERROR" and self.worker is None
+        if self.simple:
+            assert self.current_status == "RECONNECTING" and self.worker is not None
+            self.stop()
+            pump(0.25)
+            assert self.worker is None
+        else:
+            assert self.current_status == "ERROR" and self.worker is None
         assert self.start_button.cget("state") == "normal"
         self.root.geometry("1040x800+24+24")
         self.root.update()
         if self.simple:
             assert not self.history.winfo_ismapped()
-            assert self.fallback_button.winfo_ismapped()
+            assert self.reconnect_button.winfo_ismapped()
         else:
             assert self.history.winfo_height() >= 20
         self.root.destroy()

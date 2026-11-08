@@ -62,6 +62,9 @@ class AlarmConfig:
 class DisplayConfig:
     simple: bool = False
     calibration_seconds: float = 10.0
+    camera_retry_seconds: float = 4.0
+    auto_recalibrate: bool = True
+    face_absence_seconds: float = 5.0
 
 
 @dataclass

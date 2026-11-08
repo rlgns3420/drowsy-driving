@@ -30,10 +30,20 @@ class MonitoringPipeline:
         self.calibrator.reset()
         self.smoother.reset()
         self.profile = self.detector = None
+        self.absent_since = None
 
     def update(self, raw: Metrics | None, now: float) -> Observation:
         if raw is not None and not is_valid(raw):
             raw = None
+        if self.config.display.simple and self.config.display.auto_recalibrate:
+            if raw is None:
+                if self.absent_since is None:
+                    self.absent_since = now
+            else:
+                if (self.absent_since is not None and
+                        now - self.absent_since >= self.config.display.face_absence_seconds):
+                    self.reset()
+                self.absent_since = None
         metrics = self.smoother.update(raw, now) if raw is not None else None
         if raw is None:
             self.smoother.reset()
